@@ -1,20 +1,39 @@
 # Agentic Text-to-SQL Analytics Engine
 
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-agent-1C3C3C)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-database-4169E1?logo=postgresql&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-API-8E75B2?logo=google&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 A LangGraph agent that turns natural-language questions into **correct, safe PostgreSQL** over a real e-commerce database — with schema linking, schema-aware retrieval, a query planner that grounds filters against live data, self-correction, and a full LLMOps evaluation harness.
 
 Built and evaluated on the [Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (9 tables, ~100k orders).
 
-**Headline result:** **89.3% execution accuracy** (strict) / **96.4%** (result-set match) across a **150-question benchmark**, and **89.7%** on 26 held-out questions the agent was never tuned on, at **100% first-attempt query validity**.
+> **Headline result:** **89.3%** execution accuracy (strict) / **96.4%** (result-set match) across a **150-question benchmark**, and **89.7%** on 26 held-out questions the agent was never tuned on, at **100% first-attempt query validity**.
 
 ---
 
-## What it does
+## Quick example
 
-Ask a question in English:
+**Question**
 
-> *"What share of total revenue came from customers in the state of São Paulo?"*
+> *"What share of total revenue came from customers in the state of São Paulo (SP)?"*
 
-The agent picks the relevant tables, retrieves similar worked examples, plans the query, checks the real values in the database, writes PostgreSQL, guards it, runs it, and repairs it if it errors — then returns the answer.
+**SQL the agent generates**
+
+```sql
+SELECT ROUND(
+    (SUM(CASE WHEN c.customer_state = 'SP' THEN oi.price ELSE 0 END)
+     * 100.0 / SUM(oi.price))::numeric, 2) AS sp_revenue_share
+FROM order_items oi
+JOIN orders o ON o.order_id = oi.order_id
+JOIN customers c ON c.customer_id = o.customer_id;
+```
+
+**Answer** → `38.28` (%)
+
+The agent decided which tables to join, followed the project's SQL conventions (revenue = item price, 2-decimal rounding, percentages on a 0–100 scale), and produced a query that ran first try. For questions where the wording doesn't match the stored data — e.g. *"the city of São Paulo"* when the database stores `sao paulo` — the **database-lookup tool** checks the real values first and grounds the query accordingly.
 
 ---
 
@@ -56,7 +75,7 @@ flowchart LR
 
 - **Schema linking** — an LLM table-picker, benchmarked against pure embedding retrieval (60/60 vs 57/60 table recall) and kept because it was more reliable.
 - **Schema-aware RAG** — retrieves the 3 most relevant verified examples, scored by question similarity *plus* overlap with the question's tables. Cut prompt tokens 7–9% at equal accuracy.
-- **Query planning → database tools** — the planner emits a structured JSON plan (output columns, filters, grouping). The plan's filters drive a **lookup tool** that validates `table.column` against the live schema and fetches real values (exact matches, nearest matches, date ranges) as grounding — all with bound parameters, read-only. This handles questions where the wording doesn't match the stored data (e.g. "São Paulo" vs the stored `sao paulo`).
+- **Query planning → database tools** — the planner emits a structured JSON plan (output columns, filters, grouping). The plan's filters drive a **lookup tool** that validates `table.column` against the live schema and fetches real values (exact matches, nearest matches, date ranges) as grounding — all with bound parameters, read-only. This handles questions where the wording doesn't match the stored data.
 - **Self-correction** — on a PostgreSQL error, the query and error are sent back to the model for up to 2 repair attempts.
 - **Safety** — every generated query passes a SELECT-only gate before it touches the database.
 - **Prompt rule system** — 12 house rules (rounding, duration-as-days, English category names, revenue vs payment definitions, etc.) enforced in the prompt and audited in every gold query.
@@ -123,7 +142,7 @@ The **held-out** set is the real generalisation measure: 26 fresh questions — 
    ```
 3. **Dependencies**
    ```bash
-   pip install langgraph google-genai sqlalchemy psycopg2-binary pandas sqlglot python-dotenv numpy
+   pip install -r requirements.txt
    ```
 4. **Run the evaluation**
    ```bash
@@ -145,3 +164,9 @@ The 150 questions are split into tuned, variant, extended, and a fresh held-out 
 - leakage-checked (embedding similarity + exact text/SQL) so the held-out set contains no near-duplicates of the training questions.
 
 Each experiment was run 3× (mean and range reported), with keep/drop criteria fixed before the run — so every design decision in this project is backed by measurement, including the ones that were rejected.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
