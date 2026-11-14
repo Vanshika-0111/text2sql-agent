@@ -1,0 +1,18 @@
+Follow these rules when writing the SQL:
+
+1. Do not filter on order_status unless the question explicitly mentions an order status.
+2. A "delivered" order means order_delivered_customer_date IS NOT NULL.
+3. An order is "late" when order_delivered_customer_date::date > order_estimated_delivery_date::date.
+4. Return durations as a number of days, never as an interval:
+   EXTRACT(EPOCH FROM (end_time - start_time)) / 86400
+5. Group or return months with DATE_TRUNC('month', column), including in the final SELECT. Never use TO_CHAR or ::date for months.
+6. Always round like this: ROUND(value::numeric, 2).
+7. Money definitions:
+   - Revenue or sales of products/categories/sellers = SUM(order_items.price), excluding freight.
+   - Money customers spent or paid = SUM(order_payments.payment_value).
+8. Show product categories in English:
+   LEFT JOIN category_translation and use COALESCE(product_category_name_english, product_category_name).
+9. Never use a SELECT alias inside an expression (in SELECT, WHERE, HAVING, or inside a CASE or function in ORDER BY). Repeat the full expression or use a CTE.
+10. If the question gives labels or category names in quotes, use them exactly as written.
+11. Express percentages and shares on a 0-100 scale, rounded to 2 decimals.
+12. For "which X has the most/highest Y" or "top N" questions, return X together with the Y value used for ranking.

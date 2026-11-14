@@ -1,0 +1,42 @@
+# Ignore everything by default, then un-ignore the real project files below.
+*
+
+# repo meta
+!.gitignore
+!README.md
+!requirements.txt
+
+# core agent pipeline
+!agent.py
+!link_tables.py
+!schema_parts.py
+!retriever.py
+!plan.py
+!db_tools.py
+!run_eval.py
+!sql_safety.py
+!compare_results.py
+!explain.py
+!run_log.py
+!llm_usage.py
+!few_shot_examples.py
+!embed_bank.py
+!lenient_score.py
+!llmops_report.py
+!load_data.py
+
+# benchmark + config the code reads
+!benchmark_v2.json
+!test_questions.json
+!heldout_questions.json
+!new70.json
+!prompt_rules.txt
+!table_descriptions.txt
+!example_bank.json
+!example_embeddings.json
+!question_embeddings.json
+
+# write-ups
+!week2_notes.md
+!week3_notes.md
+!week4_notes.md

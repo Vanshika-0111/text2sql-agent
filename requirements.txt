@@ -1,0 +1,9 @@
+langgraph
+google-genai
+sqlalchemy
+psycopg2-binary
+pandas
+sqlglot
+python-dotenv
+numpy
+pydantic

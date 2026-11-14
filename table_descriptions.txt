@@ -1,0 +1,178 @@
+DATABASE: Olist Brazilian e-commerce (PostgreSQL), orders from 2016 to 2018. Money is in BRL.
+
+HOW THE TABLES CONNECT:
+  orders.customer_id             = customers.customer_id
+  orders.order_id                = order_items.order_id
+  orders.order_id                = order_payments.order_id
+  orders.order_id                = order_reviews.order_id
+  order_items.product_id         = products.product_id
+  order_items.seller_id          = sellers.seller_id
+  products.product_category_name = category_translation.product_category_name  (use LEFT JOIN)
+  customers.customer_zip_code_prefix / sellers.seller_zip_code_prefix
+                                 = geolocation.geolocation_zip_code_prefix  (aggregate geolocation first!)
+
+COMMON PATHS:
+  Product/category questions:  orders -> order_items -> products -> category_translation
+  Seller questions:            orders -> order_items -> sellers
+  Customer location questions: orders -> customers
+  Rating questions:            order_reviews -> orders (or -> order_items for product/seller)
+
+GENERAL RULES:
+  Text values are lowercase (cities, statuses, categories); state codes are 2-letter UPPERCASE.
+  Count orders with COUNT(DISTINCT order_id). Count real customers with COUNT(DISTINCT customer_unique_id).
+
+
+
+
+TABLE: orders
+One row per order (99,441 orders). This is the central table; most questions start here.
+Columns:
+  order_id - unique ID of the order. Links to order_items, order_payments, order_reviews.
+  customer_id - links to customers.customer_id. NOTE: a new customer_id is created for every order,
+                so to count real unique customers, join customers and use customer_unique_id.
+  order_status - all lowercase. Values: 'delivered', 'shipped', 'canceled' (one L), 'unavailable',
+                 'invoiced', 'processing', 'created', 'approved'. About 97% are 'delivered'.
+  order_purchase_timestamp - when the customer placed the order. Use this for "when" questions
+                             (orders per month, sales in 2017, etc.).
+  order_approved_at - when payment was approved.
+  order_delivered_carrier_date - when the seller handed the order to the shipping company.
+  order_delivered_customer_date - when the customer received it. Empty (NULL) if not delivered.
+  order_estimated_delivery_date - delivery date promised to the customer.
+                                  Late order = delivered_customer_date > estimated_delivery_date.
+
+TABLE: customers
+One row per customer_id (99,441 rows, one for each order).
+Columns:
+  customer_id - links to orders.customer_id. Unique per ORDER, not per person.
+  customer_unique_id - the real person. Use COUNT(DISTINCT customer_unique_id) to count actual
+                       customers or find repeat buyers.
+  customer_zip_code_prefix - first 5 digits of the zip code. Links to geolocation.geolocation_zip_code_prefix.
+  customer_city - all lowercase, no accents. Examples: 'sao paulo', 'rio de janeiro', 'belo horizonte'.
+  customer_state - 2-letter uppercase Brazilian state code. Examples: 'SP' (Sao Paulo), 'RJ' (Rio de Janeiro),
+                   'MG' (Minas Gerais), 'DF' (Brasilia), 'PR' (Parana).
+Note: this table has no dates. To ask "when" questions about customers, join to orders.
+
+TABLE: order_items
+One row per item inside an order (~112,650 rows). An order with 3 items has 3 rows.
+Columns:
+  order_id - links to orders.order_id. Repeats when an order has several items.
+  order_item_id - position of the item within the order (1, 2, 3, ... up to 21). NOT a unique ID.
+                  To count items, use COUNT(*). To count orders, use COUNT(DISTINCT order_id).
+  product_id - links to products.product_id.
+  seller_id - links to sellers.seller_id. Different items in one order can come from different sellers.
+  shipping_limit_date - deadline for the seller to hand the item to the shipping company.
+  price - price of this one item, in Brazilian Real (BRL).
+  freight_value - shipping cost charged for this item, in BRL.
+Notes:
+  Product revenue / sales = SUM(price). Total paid including shipping = SUM(price + freight_value).
+  About 775 orders (mostly canceled/unavailable) have no rows here.
+  This is the table to use for revenue by product, category, or seller.
+
+
+TABLE: order_payments
+One row per payment (~103,886 rows). Most orders have one payment, but some are split
+(e.g. part voucher + part credit card), so an order_id can appear more than once.
+Columns:
+  order_id - links to orders.order_id.
+  payment_sequential - 1 for the first payment of an order, 2 for the second, etc. NOT a unique ID.
+  payment_type - lowercase with underscores. Values: 'credit_card', 'boleto', 'voucher',
+                 'debit_card', 'not_defined'. 'boleto' is a Brazilian bank-slip payment
+                 (paid at a bank/online, similar to cash). 'voucher' is a gift/discount voucher.
+  payment_installments - number of monthly installments the customer chose (mostly for credit_card).
+  payment_value - amount paid in this payment, in BRL. Includes shipping.
+Notes:
+  Total amount paid for an order = SUM(payment_value) grouped by order_id.
+  To count orders, use COUNT(DISTINCT order_id), not COUNT(*).
+  Use this table for questions about payment methods and installments.
+  For revenue by product/category/seller, use order_items.price instead.
+
+
+TABLE: order_reviews
+One row per review (99,224 rows). Customers review an order after it arrives.
+Columns:
+  review_id - ID of the review.
+  order_id - links to orders.order_id. A few orders have more than one review.
+  review_score - integer from 1 (worst) to 5 (best). About 58% of reviews are 5.
+                 Use AVG(review_score) for average rating.
+  review_comment_title - optional short title. Mostly NULL.
+  review_comment_message - optional written comment, in PORTUGUESE. NULL for about 59% of reviews.
+  review_creation_date - when the review survey was sent to the customer.
+  review_answer_timestamp - when the customer submitted the review.
+Notes:
+  To get average rating by product, category, or seller: join order_reviews -> order_items
+  (on order_id) -> products or sellers.
+  Comments are in Portuguese, so do not search them for English words.
+
+
+TABLE: products
+One row per product (32,951 rows).
+Columns:
+  product_id - unique product ID. Links to order_items.product_id.
+  product_category_name - category in PORTUGUESE, lowercase with underscores
+                          (e.g. 'cama_mesa_banho', 'esporte_lazer', 'moveis_decoracao', 'beleza_saude').
+                          Links to category_translation.product_category_name.
+                          About 610 products have NULL category.
+  product_name_lenght - number of characters in the product name. NOTE: column name is misspelled
+                        ('lenght', not 'length') - use it exactly as written.
+  product_description_lenght - number of characters in the description. Same misspelling.
+  product_photos_qty - number of photos in the listing.
+  product_weight_g - weight in grams.
+  product_length_cm, product_height_cm, product_width_cm - package dimensions in cm (spelled correctly).
+Notes:
+  There is no product name or price here. Prices are in order_items.price.
+  For English category names, ALWAYS join category_translation and use
+  product_category_name_english (e.g. 'bed_bath_table', 'sports_leisure', 'health_beauty').
+
+
+TABLE: sellers
+One row per seller (3,095 rows). Sellers are the shops that sell on the Olist marketplace.
+Columns:
+  seller_id - unique seller ID. Links to order_items.seller_id.
+  seller_zip_code_prefix - first 5 digits of zip code. Links to geolocation.geolocation_zip_code_prefix.
+  seller_city - all lowercase, no accents (e.g. 'sao paulo', 'curitiba').
+  seller_state - 2-letter uppercase state code (e.g. 'SP', 'PR', 'MG').
+Notes:
+  Sellers are only connected to orders through order_items (orders has no seller_id).
+  Seller revenue = SUM(order_items.price) grouped by seller_id.
+  Do not confuse seller_city/seller_state with customer_city/customer_state.
+
+
+TABLE: geolocation
+Latitude/longitude points for Brazilian zip code prefixes (1,000,163 rows, only 19,015 unique zips).
+Columns:
+  geolocation_zip_code_prefix - first 5 digits of zip code. NOT unique: each zip appears ~53 times
+                                on average. Links to customers.customer_zip_code_prefix and
+                                sellers.seller_zip_code_prefix.
+  geolocation_lat - latitude.
+  geolocation_lng - longitude.
+  geolocation_city - lowercase city name (spelling may vary between rows).
+  geolocation_state - 2-letter uppercase state code.
+WARNING:
+  NEVER join this table directly to customers or sellers - it duplicates rows and breaks all
+  counts and sums. First reduce it to one row per zip, then join:
+    WITH geo AS (
+      SELECT geolocation_zip_code_prefix AS zip,
+             AVG(geolocation_lat) AS lat, AVG(geolocation_lng) AS lng
+      FROM geolocation
+      GROUP BY geolocation_zip_code_prefix
+    )
+    SELECT ... FROM customers c JOIN geo ON c.customer_zip_code_prefix = geo.zip
+  Only use this table when a question needs coordinates or distance.
+  For city/state questions, use customer_city/customer_state or seller_city/seller_state instead.
+
+
+
+TABLE: category_translation
+Lookup table: Portuguese category name -> English category name (71 rows).
+Columns:
+  product_category_name - Portuguese name, links to products.product_category_name.
+  product_category_name_english - English name, lowercase with underscores
+                                  (e.g. 'bed_bath_table', 'health_beauty', 'sports_leisure',
+                                  'furniture_decor', 'computers_accessories', 'housewares', 'toys').
+Notes:
+  ALWAYS show English category names in answers.
+  Join with LEFT JOIN from products, because a few Portuguese categories have no translation:
+    FROM products p
+    LEFT JOIN category_translation ct ON p.product_category_name = ct.product_category_name
+  When a user names a category in English (e.g. "furniture"), filter on
+  product_category_name_english, e.g. LIKE '%furniture%'.

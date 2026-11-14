@@ -1,0 +1,122 @@
+[
+  {
+    "id": 101,
+    "difficulty": "easy",
+    "question": "How many sellers are based in the state of RJ?",
+    "sql": "SELECT COUNT(*) AS sellers FROM sellers WHERE seller_state = 'RJ';"
+  },
+  {
+    "id": 102,
+    "difficulty": "easy",
+    "question": "What is the average freight value per order item?",
+    "sql": "SELECT ROUND(AVG(freight_value)::numeric, 2) AS avg_freight FROM order_items;"
+  },
+  {
+    "id": 103,
+    "difficulty": "easy",
+    "question": "How many orders have the status canceled?",
+    "sql": "SELECT COUNT(*) AS canceled_orders FROM orders WHERE order_status = 'canceled';"
+  },
+  {
+    "id": 104,
+    "difficulty": "medium",
+    "question": "Which 5 cities have the most unique customers?",
+    "sql": "SELECT customer_city, COUNT(DISTINCT customer_unique_id) AS customers FROM customers GROUP BY customer_city ORDER BY customers DESC LIMIT 5;"
+  },
+  {
+    "id": 105,
+    "difficulty": "medium",
+    "question": "For each payment type, how many payments were made in more than one installment?",
+    "sql": "SELECT payment_type, COUNT(*) AS payments FROM order_payments WHERE payment_installments > 1 GROUP BY payment_type ORDER BY payments DESC;"
+  },
+  {
+    "id": 106,
+    "difficulty": "medium",
+    "question": "What is the average review score for orders delivered late compared with orders delivered on time?",
+    "sql": "SELECT CASE WHEN o.order_delivered_customer_date::date > o.order_estimated_delivery_date::date THEN 'late' ELSE 'on time' END AS delivery, ROUND(AVG(r.review_score)::numeric, 2) AS avg_score FROM orders o JOIN order_reviews r ON o.order_id = r.order_id WHERE o.order_delivered_customer_date IS NOT NULL GROUP BY 1 ORDER BY 1;"
+  },
+  {
+    "id": 107,
+    "difficulty": "hard",
+    "question": "Which 5 product categories (in English) have the highest total freight value?",
+    "sql": "SELECT COALESCE(t.product_category_name_english, p.product_category_name) AS category, ROUND(SUM(oi.freight_value)::numeric, 2) AS total_freight FROM order_items oi JOIN products p ON oi.product_id = p.product_id LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name GROUP BY 1 ORDER BY total_freight DESC LIMIT 5;"
+  },
+  {
+    "id": 108,
+    "difficulty": "hard",
+    "question": "Which month of 2017 had the most orders?",
+    "sql": "SELECT DATE_TRUNC('month', order_purchase_timestamp::timestamp) AS month, COUNT(*) AS orders FROM orders WHERE order_purchase_timestamp::timestamp >= '2017-01-01' AND order_purchase_timestamp::timestamp < '2018-01-01' GROUP BY 1 ORDER BY orders DESC LIMIT 1;"
+  },
+  {
+    "id": 109,
+    "difficulty": "advanced",
+    "question": "How many sellers have sold at least 100 items?",
+    "sql": "SELECT COUNT(*) AS sellers FROM (SELECT seller_id FROM order_items GROUP BY seller_id HAVING COUNT(*) >= 100) s;"
+  },
+  {
+    "id": 110,
+    "difficulty": "advanced",
+    "question": "For each customer state, what percentage of payments were made by boleto?",
+    "sql": "SELECT c.customer_state, ROUND(100.0 * SUM(CASE WHEN p.payment_type = 'boleto' THEN 1 ELSE 0 END) / COUNT(*), 2) AS pct_boleto FROM order_payments p JOIN orders o ON p.order_id = o.order_id JOIN customers c ON o.customer_id = c.customer_id GROUP BY c.customer_state ORDER BY pct_boleto DESC;"
+  },
+  {
+    "id": 111,
+    "difficulty": "easy",
+    "question": "How many products have no category?",
+    "sql": "SELECT COUNT(*) AS products FROM products WHERE product_category_name IS NULL;"
+  },
+  {
+    "id": 112,
+    "difficulty": "medium",
+    "question": "On average, how many items does an order contain?",
+    "sql": "SELECT ROUND(COUNT(*)::numeric / COUNT(DISTINCT order_id), 2) AS avg_items FROM order_items;"
+  },
+  {
+    "id": 113,
+    "difficulty": "medium",
+    "question": "Which 3 states have the most sellers?",
+    "sql": "SELECT seller_state, COUNT(*) AS sellers FROM sellers GROUP BY seller_state ORDER BY sellers DESC LIMIT 3;"
+  },
+  {
+    "id": 114,
+    "difficulty": "hard",
+    "question": "Which 5 customer states have the longest average delivery time in days?",
+    "sql": "SELECT c.customer_state, ROUND(AVG(EXTRACT(EPOCH FROM (o.order_delivered_customer_date::timestamp - o.order_purchase_timestamp::timestamp)) / 86400)::numeric, 2) AS avg_days FROM orders o JOIN customers c ON o.customer_id = c.customer_id WHERE o.order_delivered_customer_date IS NOT NULL GROUP BY c.customer_state ORDER BY avg_days DESC LIMIT 5;"
+  },
+  {
+    "id": 115,
+    "difficulty": "hard",
+    "question": "How many customers have placed more than one order?",
+    "sql": "SELECT COUNT(*) AS repeat_customers FROM (SELECT c.customer_unique_id FROM customers c JOIN orders o ON c.customer_id = o.customer_id GROUP BY c.customer_unique_id HAVING COUNT(DISTINCT o.order_id) > 1) x;"
+  },
+  {
+    "id": 116,
+    "difficulty": "hard",
+    "question": "What percentage of total payment value comes from each payment type?",
+    "sql": "SELECT payment_type, ROUND((100.0 * SUM(payment_value) / SUM(SUM(payment_value)) OVER ())::numeric, 2) AS pct_value FROM order_payments GROUP BY payment_type ORDER BY pct_value DESC;"
+  },
+  {
+    "id": 117,
+    "difficulty": "advanced",
+    "question": "For each month of 2018, how many orders were placed and what was the change from the previous month?",
+    "sql": "WITH m AS (SELECT DATE_TRUNC('month', order_purchase_timestamp::timestamp) AS month, COUNT(*) AS orders FROM orders WHERE order_purchase_timestamp::timestamp >= '2018-01-01' AND order_purchase_timestamp::timestamp < '2019-01-01' GROUP BY 1) SELECT month, orders, orders - LAG(orders) OVER (ORDER BY month) AS change FROM m ORDER BY month;"
+  },
+  {
+    "id": 118,
+    "difficulty": "advanced",
+    "question": "Who is the top seller by revenue in each of the states SP, RJ and MG?",
+    "sql": "WITH s AS (SELECT se.seller_state, oi.seller_id, SUM(oi.price) AS revenue FROM order_items oi JOIN sellers se ON oi.seller_id = se.seller_id WHERE se.seller_state IN ('SP', 'RJ', 'MG') GROUP BY se.seller_state, oi.seller_id), r AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY seller_state ORDER BY revenue DESC) AS rn FROM s) SELECT seller_state, seller_id, ROUND(revenue::numeric, 2) AS revenue FROM r WHERE rn = 1 ORDER BY seller_state;"
+  },
+  {
+    "id": 119,
+    "difficulty": "advanced",
+    "question": "Out of all orders that have a review, what percentage received a 1-star review?",
+    "sql": "SELECT ROUND(100.0 * COUNT(DISTINCT CASE WHEN review_score = 1 THEN order_id END) / COUNT(DISTINCT order_id), 2) AS pct_1_star FROM order_reviews;"
+  },
+  {
+    "id": 120,
+    "difficulty": "advanced",
+    "question": "For the 5 categories with the most products, what is the average product weight in grams?",
+    "sql": "WITH top AS (SELECT product_category_name, COUNT(*) AS n FROM products WHERE product_category_name IS NOT NULL GROUP BY product_category_name ORDER BY n DESC LIMIT 5) SELECT COALESCE(t.product_category_name_english, p.product_category_name) AS category, ROUND(AVG(p.product_weight_g)::numeric, 2) AS avg_weight_g FROM products p JOIN top ON p.product_category_name = top.product_category_name LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name GROUP BY 1 ORDER BY avg_weight_g DESC;"
+  }
+]
